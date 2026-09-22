@@ -2263,6 +2263,7 @@ export default function ProfilePage() {
               <Field
                 label="Trade License Number"
                 value={profile.tradeLicenseNumber ?? ""}
+                onChange={(v) => update("tradeLicenseNumber", v)}
                 icon={FileText}
               />
               <DateField

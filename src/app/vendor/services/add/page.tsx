@@ -29,12 +29,12 @@ interface ApiCountry {
   id: number;
   code: string;
   defaultCurrency: string;
+  states?: { id: string; name: string; status?: string }[];
 }
 
 const STATUS_OPTIONS = [
   { id: "ACTIVE", name: "Active" },
   { id: "INACTIVE", name: "Inactive" },
-  { id: "DRAFT", name: "Draft" },
 ] as const;
 
 const emptyForm = {
@@ -112,6 +112,7 @@ export default function AddServicePage() {
 
     const fetchMasterData = async () => {
       let uaeCountryId: number | undefined;
+      let dubaiStateId: string | undefined;
       try {
         const [countryRows, categoryRows, fetchedPriceUnits] =
           await Promise.all([
@@ -123,14 +124,20 @@ export default function AddServicePage() {
           ]);
         const uae = countryRows.find((country) => country.code === "AE");
         uaeCountryId = uae?.id;
-        const activePriceUnits = fetchedPriceUnits.filter((unit) => unit.isActive);
+        dubaiStateId = uae?.states?.find(
+          (state) => state.name.trim().toLowerCase() === "dubai",
+        )?.id;
+        const activePriceUnits = fetchedPriceUnits.filter(
+          (unit) => unit.isActive,
+        );
         setCategories(categoryRows);
         setPriceUnits(activePriceUnits);
         setForm((current) => ({
           ...current,
           currency: uae?.defaultCurrency ?? current.currency,
           categoryId: current.categoryId,
-          priceUnit: current.priceUnit || activePriceUnits[0]?.code || "per event",
+          priceUnit:
+            current.priceUnit || activePriceUnits[0]?.code || "per event",
         }));
       } catch (err) {
         console.error("Error fetching master data:", err);
@@ -141,7 +148,10 @@ export default function AddServicePage() {
       // Pass the UAE countryId (when known) so we only fetch UAE cities
       // instead of the entire global city list.
       try {
-        const cityRows = await vendorApi.masterData.cities<ApiCity[]>(uaeCountryId);
+        const cityRows = await vendorApi.masterData.cities<ApiCity[]>(
+          uaeCountryId,
+          dubaiStateId,
+        );
         setCities(
           Array.isArray(cityRows)
             ? cityRows.filter((c) => c.status === "Active")
@@ -195,9 +205,7 @@ export default function AddServicePage() {
         const result = await vendorApi.services.checkSlug<{
           slug: string;
           available: boolean;
-        }>(
-          candidate,
-        );
+        }>(candidate);
         setForm((current) => ({ ...current, slug: result.slug }));
         setSlugStatus(result.available ? "available" : "taken");
       } catch {
@@ -321,7 +329,8 @@ export default function AddServicePage() {
     }
 
     if (!vendorId) {
-      const msg = "Vendor information not found. Please logout and login again.";
+      const msg =
+        "Vendor information not found. Please logout and login again.";
       setError(msg);
       showError(msg);
       return;
@@ -363,7 +372,8 @@ export default function AddServicePage() {
       router.push("/vendor/services");
     } catch (err) {
       console.error("Save error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to create service";
+      const msg =
+        err instanceof Error ? err.message : "Failed to create service";
       setError(msg);
       showError(msg);
     } finally {
@@ -468,7 +478,6 @@ export default function AddServicePage() {
                     searchPlaceholder="Search status..."
                   />
                 </div>
-
               </div>
             </div>
 
@@ -520,7 +529,9 @@ export default function AddServicePage() {
                         type="number"
                         min="0"
                         value={form.minPieces}
-                        onChange={(e) => setFormField("minPieces", e.target.value)}
+                        onChange={(e) =>
+                          setFormField("minPieces", e.target.value)
+                        }
                         className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400"
                         placeholder="1"
                       />
@@ -533,7 +544,9 @@ export default function AddServicePage() {
                         type="number"
                         min="0"
                         value={form.maxPieces}
-                        onChange={(e) => setFormField("maxPieces", e.target.value)}
+                        onChange={(e) =>
+                          setFormField("maxPieces", e.target.value)
+                        }
                         className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400"
                         placeholder="10"
                       />

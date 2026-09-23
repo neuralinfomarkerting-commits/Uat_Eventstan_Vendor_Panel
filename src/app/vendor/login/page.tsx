@@ -67,6 +67,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn()) return;
@@ -112,6 +115,20 @@ export default function LoginPage() {
       showError(err instanceof Error ? err.message : "Unable to reach server. Check your connection.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleForgot(e: FormEvent) {
+    e.preventDefault();
+    setForgotLoading(true);
+    try {
+      await vendorApi.auth.forgotPassword(forgotEmail.trim());
+      showSuccess("If this email is registered, a password reset request has been sent.");
+      setShowForgot(false);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Unable to send reset request.");
+    } finally {
+      setForgotLoading(false);
     }
   }
 
@@ -257,6 +274,42 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => { setForgotEmail(email); setShowForgot((v) => !v); }}
+                className="text-xs sm:text-sm font-medium hover:underline"
+                style={{ color: "#f96706" }}
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            {showForgot && (
+              <form onSubmit={handleForgot} className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700">
+                  Registered email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#f96706] focus:border-transparent bg-gray-50/50 text-black"
+                />
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="w-full flex items-center justify-center gap-2 disabled:opacity-60 text-white font-medium py-2 rounded-xl text-sm"
+                  style={{ background: "#f96706" }}
+                >
+                  {forgotLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+                  Send reset request
+                </button>
+              </form>
+            )}
 
             <div className="mt-6 sm:mt-8 pt-5 sm:pt-6 border-t border-gray-100">
               <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-xs text-gray-400">

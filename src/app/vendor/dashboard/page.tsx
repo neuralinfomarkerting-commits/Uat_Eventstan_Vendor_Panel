@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { getUser } from '@/lib/auth';
 import { vendorApi } from '@/api/vendorApi';
 import { showError, showSuccess } from '@/lib/toast';
-import { normalizeBooking, type ApiBooking } from '@/lib/vendorData';
+import { normalizeBooking, formatMoney, isFullApiBooking, type ApiBooking } from '@/lib/vendorData';
 import {
   DollarSign, CalendarCheck, Clock,
   Star, ArrowRight, X, CheckCircle, XCircle, MessageSquare,
@@ -12,6 +12,23 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Booking } from '@/lib/types';
+
+interface DashboardSummary {
+  totalRevenue: number;
+  totalBookings: number;
+  activeServices: number;
+}
+type DashboardResponse =
+  | { data: DashboardSummary; recentBookings?: ApiBooking[] }
+  | DashboardSummary;
+
+async function resolveUpdatedBooking(id: string, raw: unknown, vendorId?: string | null) {
+  if (isFullApiBooking(raw)) return normalizeBooking(raw, vendorId);
+  const fresh = (await vendorApi.bookings.list<ApiBooking[]>()).find((item) => item.id === id);
+  if (!fresh) throw new Error('Booking updated, but could not be reloaded. Please refresh.');
+  return normalizeBooking(fresh, vendorId);
+}
+
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer
@@ -51,33 +68,33 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, _setError] = useState('');
-  // Wrapping the raw setter means every existing setError(...) call
-  // further down also pops an error toast that holds until closed.
+  
+  
   const setError = (msg: string) => {
     _setError(msg);
     if (msg) showError(msg);
   };
   
   const recentBookings = bookings.slice(0, 5);
+  const displayCurrency = bookings[0]?.currency ?? 'AED';
 
   useEffect(() => {
     Promise.all([
-      vendorApi.dashboard.get<{
-        data: { totalRevenue: number; totalBookings: number; activeServices: number };
-        recentBookings: ApiBooking[];
-      }>(),
+      vendorApi.dashboard.get<DashboardResponse>(),
       vendorApi.bookings.list<ApiBooking[]>(),
     ])
       .then(([dashboard, allBookings]) => {
-        const normalized = allBookings.map(normalizeBooking);
+        const vendorId = getUser()?.vendorId;
+        const normalized = allBookings.map((item) => normalizeBooking(item, vendorId));
         setBookings(normalized);
+        const summary = 'data' in dashboard ? dashboard.data : dashboard;
         setStats({
-          totalRevenue: dashboard.data.totalRevenue,
-          totalBookings: dashboard.data.totalBookings,
+          totalRevenue: summary.totalRevenue,
+          totalBookings: summary.totalBookings,
           pendingBookings: normalized.filter((booking) => booking.status === 'Pending').length,
           confirmedBookings: normalized.filter((booking) => booking.status === 'Confirmed').length,
           averageRating: 0,
-          totalServices: dashboard.data.activeServices,
+          totalServices: summary.activeServices,
         });
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Unable to load dashboard'))
@@ -109,7 +126,7 @@ export default function DashboardPage() {
       setActionLoading(true);
       setError('');
       try {
-        const updated = normalizeBooking(await vendorApi.bookings.accept<ApiBooking>(selectedBooking.id));
+        const updated = await resolveUpdatedBooking(selectedBooking.id, await vendorApi.bookings.accept<unknown>(selectedBooking.id), getUser()?.vendorId);
         setBookings(current => current.map(booking => booking.id === selectedBooking.id ? updated : booking));
         setStats(current => ({ ...current, pendingBookings: Math.max(0, current.pendingBookings - 1) }));
         setShowConfirmDialog(false);
@@ -128,7 +145,7 @@ export default function DashboardPage() {
       setActionLoading(true);
       setError('');
       try {
-        const updated = normalizeBooking(await vendorApi.bookings.reject<ApiBooking>(selectedBooking.id));
+        const updated = await resolveUpdatedBooking(selectedBooking.id, await vendorApi.bookings.reject<unknown>(selectedBooking.id), getUser()?.vendorId);
         setBookings(current => current.map(booking => booking.id === selectedBooking.id ? updated : booking));
         setStats(current => ({ ...current, pendingBookings: Math.max(0, current.pendingBookings - 1) }));
         setRejectionReason('');
@@ -150,7 +167,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome Section */}
+      {}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -160,12 +177,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Grid */}
+      {}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
             label: 'Total Revenue',
-            value: loading ? '...' : `AED ${stats.totalRevenue.toLocaleString()}`,
+            value: loading ? '...' : formatMoney(stats.totalRevenue, displayCurrency),
             sub: 'Successful payments',
             icon: DollarSign,
             color: 'bg-green-50 text-green-600',
@@ -210,7 +227,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Charts */}
+      {}
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-6">
@@ -231,7 +248,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={v => `${v / 1000}k`} />
-              <Tooltip formatter={(v: number) => [`AED ${v.toLocaleString()}`, 'Revenue']} />
+              <Tooltip formatter={(v: number) => [formatMoney(v, displayCurrency), 'Revenue']} />
               <Area type="monotone" dataKey="revenue" stroke="#f97316" strokeWidth={2.5} fill="url(#revenueGrad)" dot={{ fill: '#f97316', strokeWidth: 0, r: 4 }} />
             </AreaChart>
           </ResponsiveContainer>
@@ -254,7 +271,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Bookings Section */}
+      {}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-gray-100">
           <div>
@@ -280,12 +297,12 @@ export default function DashboardPage() {
               >
                 <div className="p-5">
                   <div className="flex items-center gap-4">
-                    {/* Avatar */}
+                    {}
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center text-orange-700 font-bold text-base shadow-sm shrink-0">
                       {booking.customerName.charAt(0)}
                     </div>
                     
-                    {/* Main Info */}
+                    {}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-base font-semibold text-gray-900">
@@ -314,10 +331,10 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     
-                    {/* Amount & Actions */}
+                    {}
                     <div className="text-right shrink-0">
                       <p className="text-lg font-bold text-gray-900">
-                        AED {booking.amount.toLocaleString()}
+                        {formatMoney(booking.amount, booking.currency)}
                       </p>
                       {booking.status === 'Pending' && (
                         <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
@@ -357,7 +374,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   
-                  {/* Customer Message if exists */}
+                  {}
                   {booking.message && (
                     <div className="mt-3 ml-16 p-3 bg-blue-50 rounded-lg border border-blue-100">
                       <p className="text-xs text-blue-600 font-medium mb-1 flex items-center gap-1">
@@ -373,19 +390,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Booking Details Modal - Fixed blur issue */}
+      {}
       {showModal && selectedBooking && (
         <div className="fixed inset-0 z-[100] overflow-y-auto">
-          {/* Backdrop without blur - just dark overlay */}
+          {}
           <div 
             className="fixed inset-0 bg-black/50 transition-all duration-300"
             onClick={closeModal}
           />
           
-          {/* Modal Content */}
+          {}
           <div className="flex min-h-full items-center justify-center p-4 relative z-[101]">
             <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto transform transition-all duration-300 scale-100 max-h-[90vh] overflow-y-auto">
-              {/* Header */}
+              {}
               <div className="sticky top-0 bg-white rounded-t-2xl flex items-center justify-between p-6 border-b border-gray-100 z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center text-orange-700 font-bold text-lg">
@@ -409,9 +426,9 @@ export default function DashboardPage() {
                 </div>
               </div>
               
-              {/* Content */}
+              {}
               <div className="p-6 space-y-5">
-                {/* Customer Info */}
+                {}
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Customer Information</p>
                   <div className="grid sm:grid-cols-2 gap-3">
@@ -434,7 +451,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Event Details */}
+                {}
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Event Details</p>
                   <div className="grid grid-cols-2 gap-3">
@@ -478,17 +495,17 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Payment Summary */}
+                {}
                 <div className="bg-orange-50 rounded-xl p-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Payment Summary</p>
                   <div className="flex justify-between items-end mb-2">
                     <div>
                       <p className="text-xs text-gray-500">Total Amount</p>
-                      <p className="text-2xl font-bold text-orange-600">AED {selectedBooking.amount.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-orange-600">{formatMoney(selectedBooking.amount, selectedBooking.currency)}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-gray-500">Paid Amount</p>
-                      <p className="text-lg font-bold text-green-600">AED {selectedBooking.paidAmount.toLocaleString()}</p>
+                      <p className="text-lg font-bold text-green-600">{formatMoney(selectedBooking.paidAmount, selectedBooking.currency)}</p>
                     </div>
                   </div>
                   <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -498,12 +515,12 @@ export default function DashboardPage() {
                     />
                   </div>
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Balance: AED {(selectedBooking.amount - selectedBooking.paidAmount).toLocaleString()}</span>
+                    <span>Balance: {formatMoney(selectedBooking.amount - selectedBooking.paidAmount, selectedBooking.currency)}</span>
                     <span>{Math.round((selectedBooking.paidAmount / selectedBooking.amount) * 100)}% paid</span>
                   </div>
                 </div>
 
-                {/* Customer Message */}
+                {}
                 {selectedBooking.message && (
                   <div className="bg-blue-50 rounded-xl p-4">
                     <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
@@ -513,7 +530,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {/* Rejection Reason if rejected */}
+                {}
                 {selectedBooking.status === 'Rejected (Vendor)' && selectedBooking.rejectionReason && (
                   <div className="bg-red-50 rounded-xl p-4">
                     <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
@@ -524,7 +541,7 @@ export default function DashboardPage() {
                 )}
               </div>
               
-              {/* Footer Actions */}
+              {}
               {selectedBooking.status === 'Pending' && (
                 <div className="flex gap-3 p-6 border-t border-gray-100">
                   <button
@@ -559,7 +576,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Accept Confirmation Dialog */}
+      {}
       {showConfirmDialog && selectedBooking && (
         <div className="fixed inset-0 z-[100] overflow-y-auto">
           <div 
@@ -587,7 +604,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Amount:</span>
-                    <span className="font-bold text-orange-600">AED {selectedBooking.amount.toLocaleString()}</span>
+                    <span className="font-bold text-orange-600">{formatMoney(selectedBooking.amount, selectedBooking.currency)}</span>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -611,7 +628,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Reject Dialog */}
+      {}
       {showRejectDialog && selectedBooking && (
         <div className="fixed inset-0 z-[100] overflow-y-auto">
           <div 

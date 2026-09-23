@@ -1,7 +1,7 @@
 const API_ROOT =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ??
   process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') ??
-  'https://api.eventstan.com';
+  'https://uatapi.eventstan.com';
 
 const BASE = `${API_ROOT}/api/v1`;
 

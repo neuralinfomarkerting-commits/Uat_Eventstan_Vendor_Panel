@@ -20,6 +20,7 @@ export interface Booking {
   guests: number;
   amount: number;
   paidAmount: number;
+  currency: string;
   status: BookingStatus;
   createdAt: string;
   message?: string;

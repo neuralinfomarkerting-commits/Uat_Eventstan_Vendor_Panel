@@ -28,6 +28,7 @@ interface ApiCountry {
   id: number;
   code: string;
   defaultCurrency: string;
+  states?: { id: string; name: string; status?: string }[];
 }
 
 interface ApiService {
@@ -167,7 +168,10 @@ export default function EditServicePage() {
         // rest of the form (service data, price units, categories) from loading.
         try {
           const uae = countryRows.find((country) => country.code === "AE");
-          const cityRows = await vendorApi.masterData.cities<ApiCity[]>(uae?.id);
+          const dubaiStateId = uae?.states?.find(
+            (state) => state.name.trim().toLowerCase() === "dubai",
+          )?.id;
+          const cityRows = await vendorApi.masterData.cities<ApiCity[]>(uae?.id, dubaiStateId);
           setCities(
             Array.isArray(cityRows)
               ? cityRows.filter((c) => c.status === "Active")

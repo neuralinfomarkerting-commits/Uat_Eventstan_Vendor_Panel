@@ -1,15 +1,18 @@
 type JsonBody = object | unknown[];
-const API_BASE_URL = '/api/proxy/api/v1';
+const API_BASE_URL = "/api/proxy/api/v1";
 
 function getVendorToken() {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('vendor_token');
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("vendor_token");
 }
 
-function headers(token = getVendorToken(), accept = 'application/json'): HeadersInit {
+function headers(
+  token = getVendorToken(),
+  accept = "application/json",
+): HeadersInit {
   return {
     Accept: accept,
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
@@ -27,8 +30,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       signal: options.signal ?? controller.signal,
     });
   } catch (cause) {
-    if (cause instanceof Error && cause.name === 'AbortError') {
-      throw new Error('Request timed out. Please try again.');
+    if (cause instanceof Error && cause.name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
     }
     throw cause;
   } finally {
@@ -36,7 +39,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    const rawText = await response.text().catch(() => '');
+    const rawText = await response.text().catch(() => "");
     let errorBody: { message?: string; error?: string } | null = null;
     try {
       errorBody = rawText ? JSON.parse(rawText) : null;
@@ -46,12 +49,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const message =
       errorBody?.message ||
       errorBody?.error ||
-      `Request failed: ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+      `Request failed: ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
     throw new Error(message);
   }
 
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  return unwrapEnvelope(await response.json()) as T;
+}
+const ENVELOPE_KEYS = new Set(["success", "message", "statusCode", "data"]);
+
+function unwrapEnvelope(body: unknown): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return body;
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const isPureEnvelope =
+    typeof record.success === "boolean" &&
+    "data" in record &&
+    keys.every((key) => ENVELOPE_KEYS.has(key));
+  return isPureEnvelope ? record.data : body;
 }
 
 function jsonOptions(method: string, body?: JsonBody): RequestInit {
@@ -60,11 +75,6 @@ function jsonOptions(method: string, body?: JsonBody): RequestInit {
     headers: headers(),
     ...(body ? { body: JSON.stringify(body) } : {}),
   };
-}
-
-function generateImageUrl(filename: string, folder: string): string {
-  const today = new Date().toISOString().split('T')[0];
-  return `https://api.eventstan.com/api/v1/uploads/images/${folder}/${today}/${filename}`;
 }
 
 const masterDataCache = new Map<string, Promise<unknown>>();
@@ -94,134 +104,246 @@ function clearMasterDataCache(prefix?: string) {
 
 export const vendorApi = {
   uploads: {
-    image: async (file: File, folder = 'vendors') => {
+    image: async (file: File, folder = "vendors") => {
       const body = new FormData();
-      body.append('file', file);
+      body.append("file", file);
 
-      const response = await fetch(`${API_BASE_URL}/uploads/images?folder=${encodeURIComponent(folder)}`, {
-        method: 'POST',
-        headers: getVendorToken() ? { Authorization: `Bearer ${getVendorToken()}` } : undefined,
-        body,
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/uploads/images?folder=${encodeURIComponent(folder)}`,
+        {
+          method: "POST",
+          headers: getVendorToken()
+            ? { Authorization: `Bearer ${getVendorToken()}` }
+            : undefined,
+          body,
+        },
+      );
 
-      if (!response.ok) throw new Error(`Image upload failed: ${response.status}`);
+      if (!response.ok)
+        throw new Error(`Image upload failed: ${response.status}`);
 
-      const result = await response.json() as { bucket: string; key: string; url: string; contentType: string; size: number };
+      const result = (await response.json()) as {
+        bucket: string;
+        key: string;
+        url: string;
+        contentType: string;
+        size: number;
+      };
 
-      let filename = '';
-      if (result.url) {
-        const urlParts = result.url.split('/');
-        filename = urlParts[urlParts.length - 1];
-      } else if (result.key) {
-        const keyParts = result.key.split('/');
-        filename = keyParts[keyParts.length - 1];
-      } else {
-        const extension = file.name.split('.').pop();
-        const uniqueId = crypto.randomUUID?.() || Date.now().toString();
-        filename = `${uniqueId}.${extension}`;
-      }
-
-      const imageUrl = generateImageUrl(filename, folder);
+      const filename = result.url
+        ? (result.url.split("/").pop() ?? "")
+        : result.key
+          ? (result.key.split("/").pop() ?? "")
+          : `${crypto.randomUUID?.() || Date.now().toString()}.${file.name.split(".").pop() ?? ""}`;
 
       return {
         ...result,
-        url: imageUrl,
-        filename: filename,
+        filename,
       };
     },
+
+    file: async (file: File, folder = "vendors") => {
+      const body = new FormData();
+      body.append("file", file);
+
+      const response = await fetch(
+        `${API_BASE_URL}/uploads/files?folder=${encodeURIComponent(folder)}`,
+        {
+          method: "POST",
+          headers: getVendorToken()
+            ? { Authorization: `Bearer ${getVendorToken()}` }
+            : undefined,
+          body,
+        },
+      );
+
+      if (!response.ok)
+        throw new Error(`File upload failed: ${response.status}`);
+      return response.json() as Promise<{
+        bucket: string;
+        key: string;
+        url: string;
+        contentType: string;
+        size: number;
+      }>;
+    },
+
+    presign: <T = unknown>(payload: JsonBody) =>
+      request<T>("uploads/images/presign", jsonOptions("POST", payload)),
   },
 
   auth: {
     login: <T = unknown>(email: string, password: string) =>
-      request<T>('auth/login', jsonOptions('POST', { email, password })),
-    logout: () => request<void>('auth/logout', jsonOptions('POST')),
-    me: <T = unknown>() => request<T>('auth/me', { headers: headers() }),
-    changePassword: <T = unknown>(payload: { currentPassword: string; newPassword: string }) =>
-      request<T>('auth/change-password', jsonOptions('POST', payload)),
+      request<T>("auth/login", jsonOptions("POST", { email, password })),
+    logout: () => request<void>("auth/logout", jsonOptions("POST")),
+    me: <T = unknown>() => request<T>("auth/me", { headers: headers() }),
+    updateMe: <T = unknown>(payload: JsonBody) =>
+      request<T>("auth/me", jsonOptions("PATCH", payload)),
+    changePassword: <T = unknown>(payload: {
+      currentPassword: string;
+      newPassword: string;
+    }) => request<T>("auth/change-password", jsonOptions("POST", payload)),
+    forgotPassword: <T = unknown>(email: string) =>
+      request<T>("auth/forgot-password", jsonOptions("POST", { email })),
+    resetPassword: <T = unknown>(payload: JsonBody) =>
+      request<T>("auth/reset-password", jsonOptions("POST", payload)),
+  },
+
+  health: {
+    app: <T = unknown>() => request<T>("health", { cache: "no-store" }),
+    db: <T = unknown>() => request<T>("health/db", { cache: "no-store" }),
   },
 
   dashboard: {
-    get: <T = unknown>() => request<T>('dashboard/vendor', { cache: 'no-store', headers: headers() }),
+    get: <T = unknown>() =>
+      request<T>("dashboard/vendor", { cache: "no-store", headers: headers() }),
   },
 
   bookings: {
-    list: <T = unknown[]>() => request<T>('bookings', { cache: 'no-store', headers: headers() }),
-    accept: <T = unknown>(id: string) => request<T>(`bookings/${id}/vendor-accept`, jsonOptions('PATCH')),
-    reject: <T = unknown>(id: string) => request<T>(`bookings/${id}/vendor-reject`, jsonOptions('PATCH')),
-    complete: <T = unknown>(id: string) => request<T>(`bookings/${id}/complete`, jsonOptions('PATCH')),
+    list: <T = unknown[]>(status?: string) =>
+      request<T>(
+        `bookings${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+        {
+          cache: "no-store",
+          headers: headers(),
+        },
+      ),
+    get: <T = unknown>(id: string) =>
+      request<T>(`bookings/${id}`, { cache: "no-store", headers: headers() }),
+    accept: <T = unknown>(id: string) =>
+      request<T>(`bookings/${id}/vendor-accept`, jsonOptions("PATCH")),
+    reject: <T = unknown>(id: string) =>
+      request<T>(`bookings/${id}/vendor-reject`, jsonOptions("PATCH")),
+    complete: <T = unknown>(id: string) =>
+      request<T>(`bookings/${id}/complete`, jsonOptions("PATCH")),
+    cancel: <T = unknown>(id: string, reason?: string) =>
+      request<T>(
+        `bookings/${id}/cancel`,
+        jsonOptions("PATCH", reason ? { reason } : undefined),
+      ),
+    refundEstimate: <T = unknown>(id: string) =>
+      request<T>(`bookings/${id}/refund-estimate`, {
+        cache: "no-store",
+        headers: headers(),
+      }),
   },
 
   profile: {
-    get: <T = unknown>() => request<T>('vendors/me', { cache: 'no-store', headers: headers() }),
-    update: <T = unknown>(payload: JsonBody) => request<T>('vendors/me', jsonOptions('PUT', payload)),
+    get: <T = unknown>() =>
+      request<T>("vendors/me", { cache: "no-store", headers: headers() }),
+    update: <T = unknown>(payload: JsonBody) =>
+      request<T>("vendors/me", jsonOptions("PUT", payload)),
   },
 
   availability: {
-    list: <T = unknown[]>() => request<T>('availability/me', { cache: 'no-store', headers: headers() }),
-    upsert: <T = unknown>(payload: JsonBody) => request<T>('availability', jsonOptions('PUT', payload)),
+    list: <T = unknown[]>() =>
+      request<T>("availability/me", { cache: "no-store", headers: headers() }),
+    upsert: <T = unknown>(payload: JsonBody) =>
+      request<T>("availability", jsonOptions("PUT", payload)),
   },
 
   services: {
     list: <T = unknown[]>() =>
-      request<T>('services?includeAll=true', {
-        cache: 'no-store',
+      request<T>("services?includeAll=true", {
+        cache: "no-store",
         headers: headers(getVendorToken()),
       }),
-    get: <T = unknown>(id: string) => request<T>(`services/${id}`, { headers: headers() }),
+    get: <T = unknown>(id: string) =>
+      request<T>(`services/${id}`, { headers: headers() }),
     checkSlug: <T = unknown>(slug: string, excludeId?: string) =>
       request<T>(
-        `services/slug-availability?slug=${encodeURIComponent(slug)}${excludeId ? `&excludeId=${encodeURIComponent(excludeId)}` : ''}`,
+        `services/slug-availability?slug=${encodeURIComponent(slug)}${excludeId ? `&excludeId=${encodeURIComponent(excludeId)}` : ""}`,
       ),
-    create: <T = unknown>(payload: JsonBody) => request<T>('services', jsonOptions('POST', payload)),
-    update: <T = unknown>(id: string, payload: JsonBody) => request<T>(`services/${id}`, jsonOptions('PUT', payload)),
+    create: <T = unknown>(payload: JsonBody) =>
+      request<T>("services", jsonOptions("POST", payload)),
+    update: <T = unknown>(id: string, payload: JsonBody) =>
+      request<T>(`services/${id}`, jsonOptions("PUT", payload)),
     updateStatus: (id: string, status: string) =>
-      request<unknown>(`services/${id}`, jsonOptions('PATCH', { status })),
-    delete: (id: string) => request<void>(`services/${id}`, jsonOptions('DELETE')),
+      request<unknown>(`services/${id}`, jsonOptions("PATCH", { status })),
+    delete: (id: string) =>
+      request<void>(`services/${id}`, jsonOptions("DELETE")),
     createSubService: (serviceId: string, payload: JsonBody) =>
-      request<unknown>(`services/${serviceId}/sub-services`, jsonOptions('POST', payload)),
+      request<unknown>(
+        `services/${serviceId}/sub-services`,
+        jsonOptions("POST", payload),
+      ),
     updateSubService: (subServiceId: string, payload: JsonBody) =>
-      request<unknown>(`sub-services/${subServiceId}`, jsonOptions('PUT', payload)),
+      request<unknown>(
+        `sub-services/${subServiceId}`,
+        jsonOptions("PUT", payload),
+      ),
     deleteSubService: (subServiceId: string) =>
-      request<void>(`sub-services/${subServiceId}`, jsonOptions('DELETE')),
+      request<void>(`sub-services/${subServiceId}`, jsonOptions("DELETE")),
   },
 
   packages: {
-    list: <T = unknown[]>() => request<T>('packages', { headers: headers(getVendorToken(), '*/*') }),
-    get: <T = unknown>(id: string) => request<T>(`packages/${id}`, { headers: headers() }),
-    create: <T = unknown>(payload: JsonBody) => request<T>('packages', jsonOptions('POST', payload)),
-    update: <T = unknown>(id: string, payload: JsonBody) => request<T>(`packages/${id}`, jsonOptions('PUT', payload)),
+    list: <T = unknown[]>() =>
+      request<T>("packages", { headers: headers(getVendorToken(), "*/*") }),
+    get: <T = unknown>(id: string) =>
+      request<T>(`packages/${id}`, { headers: headers() }),
+    create: <T = unknown>(payload: JsonBody) =>
+      request<T>("packages", jsonOptions("POST", payload)),
+    update: <T = unknown>(id: string, payload: JsonBody) =>
+      request<T>(`packages/${id}`, jsonOptions("PUT", payload)),
     updateStatus: (id: string, status: string) =>
-      request<unknown>(`packages/${id}`, jsonOptions('PATCH', { status })),
-    delete: (id: string) => request<void>(`packages/${id}`, jsonOptions('DELETE')),
+      request<unknown>(`packages/${id}`, jsonOptions("PATCH", { status })),
+    delete: (id: string) =>
+      request<void>(`packages/${id}`, jsonOptions("DELETE")),
+  },
+
+  notifications: {
+    list: <T = unknown[]>() =>
+      request<T>("notifications/me", { cache: "no-store", headers: headers() }),
+    markRead: <T = unknown>(id: string) =>
+      request<T>(`notifications/${id}/read`, jsonOptions("PATCH")),
+  },
+
+  reviews: {
+    list: <T = unknown[]>() => request<T>("reviews", { cache: "no-store" }),
   },
 
   support: {
-    list: <T = unknown[]>() => request<T>('support/tickets', { cache: 'no-store', headers: headers() }),
-    get: <T = unknown>(id: string) => request<T>(`support/tickets/${id}`, { cache: 'no-store', headers: headers() }),
-    create: <T = unknown>(payload: JsonBody) => request<T>('support/tickets', jsonOptions('POST', payload)),
+    list: <T = unknown[]>() =>
+      request<T>("support/tickets", { cache: "no-store", headers: headers() }),
+    get: <T = unknown>(id: string) =>
+      request<T>(`support/tickets/${id}`, {
+        cache: "no-store",
+        headers: headers(),
+      }),
+    create: <T = unknown>(payload: JsonBody) =>
+      request<T>("support/tickets", jsonOptions("POST", payload)),
     reply: <T = unknown>(id: string, payload: JsonBody) =>
-      request<T>(`support/tickets/${id}/replies`, jsonOptions('POST', payload)),
+      request<T>(`support/tickets/${id}/replies`, jsonOptions("POST", payload)),
   },
 
   masterData: {
-    countries: <T = unknown[]>() => cachedRequest<T>('countries', 'master-data/countries'),
-    categories: <T = unknown[]>() => cachedRequest<T>('categories', 'master-data/categories'),
-    priceUnits: <T = unknown[]>() => cachedRequest<T>('price-units', 'master-data/price-units'),
-    visaTypes: <T = unknown[]>() => cachedRequest<T>('visa-types', 'master-data/visa-types'),
-    eventSlots: <T = unknown[]>() => cachedRequest<T>('event-slots', 'master-data/event-slots'),
+    countries: <T = unknown[]>() =>
+      cachedRequest<T>("countries", "master-data/countries"),
+    categories: <T = unknown[]>() =>
+      cachedRequest<T>("categories", "master-data/categories"),
+    priceUnits: <T = unknown[]>() =>
+      cachedRequest<T>("price-units", "master-data/price-units"),
+    eventMasters: <T = unknown[]>() =>
+      cachedRequest<T>("event-masters", "event-masters"),
+    visaTypes: <T = unknown[]>() =>
+      cachedRequest<T>("visa-types", "master-data/visa-types"),
+    eventSlots: <T = unknown[]>() =>
+      cachedRequest<T>("event-slots", "master-data/event-slots"),
+    currencies: <T = unknown[]>() =>
+      cachedRequest<T>("currencies", "master-data/currencies"),
     states: <T = unknown[]>(countryId?: number) =>
       cachedRequest<T>(
-        `states:${countryId ?? 'all'}`,
-        `master-data/states${countryId ? `?countryId=${countryId}` : ''}`,
+        `states:${countryId ?? "all"}`,
+        `master-data/states${countryId ? `?countryId=${countryId}` : ""}`,
       ),
     cities: <T = unknown[]>(countryId?: number, stateId?: string) => {
       const params = new URLSearchParams();
-      if (countryId) params.set('countryId', String(countryId));
-      if (stateId) params.set('stateId', stateId);
+      if (countryId) params.set("countryId", String(countryId));
+      if (stateId) params.set("stateId", stateId);
       const query = params.toString();
       return cachedRequest<T>(
-        `cities:${countryId ?? 'all'}:${stateId ?? 'all'}`,
-        `master-data/cities${query ? `?${query}` : ''}`,
+        `cities:${countryId ?? "all"}:${stateId ?? "all"}`,
+        `master-data/cities${query ? `?${query}` : ""}`,
       );
     },
     clearCache: clearMasterDataCache,

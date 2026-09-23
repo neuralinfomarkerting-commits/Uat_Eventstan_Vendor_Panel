@@ -454,13 +454,13 @@ export default function EditPackagePage() {
               (profile as any).address ||
               "";
             vendorPhoneNumber =
-              (profile as any).phone ||
               (profile as any).primaryMobile ||
+              (profile as any).phone ||
               (profile as any).telephone ||
               "";
             vendorPhoneCountryCode =
-              (profile as any).phoneCountryCode ||
               (profile as any).primaryMobileCountryCode ||
+              (profile as any).phoneCountryCode ||
               "";
           }
         } catch (error) {
@@ -491,44 +491,25 @@ export default function EditPackagePage() {
 
         const fetchedCountries = await loadCountries();
 
-let displayPhone = vendorPhoneNumber || "";
-let matchedCountryCode = "AE";
+        let matchedCountryCode = "AE";
+        const displayPhone = (vendorPhoneNumber || "").trim();
 
-if (vendorPhoneCountryCode && fetchedCountries.length > 0) {
-  const normalizedCode = vendorPhoneCountryCode.startsWith("+")
-    ? vendorPhoneCountryCode
-    : `+${vendorPhoneCountryCode}`;
+        if (vendorPhoneCountryCode && fetchedCountries.length > 0) {
+          const normalizedCode = vendorPhoneCountryCode.startsWith("+")
+            ? vendorPhoneCountryCode
+            : `+${vendorPhoneCountryCode}`;
 
-  const match = fetchedCountries.find(
-    (country) =>
-      country.phoneCode === normalizedCode ||
-      country.code === vendorPhoneCountryCode ||
-      country.code === normalizedCode.replace("+", "")
-  );
+          const match = fetchedCountries.find(
+            (country) =>
+              country.phoneCode === normalizedCode ||
+              country.code === vendorPhoneCountryCode ||
+              country.code === normalizedCode.replace("+", ""),
+          );
 
-  if (match) {
-    matchedCountryCode = match.code;
-  }
-}
-
-if (displayPhone && fetchedCountries.length > 0) {
-  const normalizedPhone = displayPhone.startsWith("+")
-    ? displayPhone
-    : `+${displayPhone}`;
-
-  const country = fetchedCountries.find(
-    (item) =>
-      item.code === matchedCountryCode &&
-      item.phoneCode &&
-      normalizedPhone.startsWith(item.phoneCode)
-  );
-
-  if (country) {
-    displayPhone = normalizedPhone
-      .slice(country.phoneCode.length)
-      .trim();
-  }
-}
+          if (match) {
+            matchedCountryCode = match.code;
+          }
+        }
 
         const isRental = pkg.isRental || selectedCategoryIsRental || false;
 

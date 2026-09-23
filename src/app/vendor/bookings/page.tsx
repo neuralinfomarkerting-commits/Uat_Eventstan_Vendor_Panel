@@ -4,7 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { Booking, BookingStatus } from '@/lib/types';
 import { vendorApi } from '@/api/vendorApi';
 import { showError, showSuccess } from '@/lib/toast';
-import { normalizeBooking, canMarkComplete, type ApiBooking } from '@/lib/vendorData';
+import { getUser } from '@/lib/auth';
+import { normalizeBooking, formatMoney, canMarkComplete, type ApiBooking } from '@/lib/vendorData';
 import {
   Search, CheckCircle2, XCircle, Eye, Calendar, Users,
   MessageSquare, X, ChevronLeft, ChevronRight,
@@ -23,14 +24,24 @@ const statusConfig: Record<string, { bg: string; text: string; dot: string }> = 
   'Cancelled (Admin/User)':           { bg: 'bg-gray-100',  text: 'text-gray-600',   dot: 'bg-gray-400' },
 };
 
-const tabs: { label: string; value: BookingStatus | 'All' }[] = [
+type TabValue = BookingStatus | 'All' | 'Rejected';
+
+const tabs: { label: string; value: TabValue }[] = [
   { label: 'All',       value: 'All' },
   { label: 'Pending',   value: 'Pending' },
   { label: 'Accepted',  value: 'Accepted' },
   { label: 'Confirmed', value: 'Confirmed' },
   { label: 'Completed', value: 'Completed' },
-  { label: 'Rejected',  value: 'Rejected (Vendor)' },
+  { label: 'Rejected',  value: 'Rejected' },
+  { label: 'Payment Pending', value: 'Payment Pending (Balance)' },
+  { label: 'Cancelled', value: 'Cancelled (Admin/User)' },
 ];
+
+function matchesTab(status: string, tab: TabValue) {
+  if (tab === 'All') return true;
+  if (tab === 'Rejected') return status.startsWith('Rejected');
+  return status === tab;
+}
 
 type SortKey = 'id' | 'customerName' | 'eventDate' | 'amount' | 'status' | 'createdAt';
 type SortDir = 'asc' | 'desc';
@@ -59,13 +70,13 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, _setError] = useState('');
-  // Wrapping the raw setter means every existing setError(...) call
-  // further down also pops an error toast that holds until closed.
+  
+  
   const setError = (msg: string) => {
     _setError(msg);
     if (msg) showError(msg);
   };
-  const [tab, setTab] = useState<BookingStatus | 'All'>('All');
+  const [tab, setTab] = useState<TabValue>('All');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Booking | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('createdAt');
@@ -84,19 +95,32 @@ export default function BookingsPage() {
   };
 
   useEffect(() => {
+    const vendorId = getUser()?.vendorId;
     vendorApi.bookings.list<ApiBooking[]>()
-      .then((items) => setBookings(items.map(normalizeBooking)))
+      .then((items) => setBookings((Array.isArray(items) ? items : []).map((item) => normalizeBooking(item, vendorId))))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Unable to load bookings'))
       .finally(() => setLoading(false));
   }, []);
+
+  
+  
+  const applyBookingUpdate = async (id: string, updated: unknown) => {
+    const candidate = updated as Partial<ApiBooking> | null | undefined;
+    const vendorId = getUser()?.vendorId;
+    if (candidate && Array.isArray(candidate.items) && candidate.customer) {
+      const normalized = normalizeBooking(candidate as ApiBooking, vendorId);
+      setBookings(prev => prev.map(b => b.id === id ? normalized : b));
+      return;
+    }
+    const fresh = await vendorApi.bookings.list<ApiBooking[]>();
+    setBookings(fresh.map((item) => normalizeBooking(item, vendorId)));
+  };
 
   const handleAccept = async (id: string) => {
     setActionId(id);
     setError('');
     try {
-      const updated = await vendorApi.bookings.accept<ApiBooking>(id);
-      const normalized = normalizeBooking(updated);
-      setBookings(prev => prev.map(b => b.id === id ? normalized : b));
+      await applyBookingUpdate(id, await vendorApi.bookings.accept<unknown>(id));
       setSelected(null);
       setAcceptModal(null);
     } catch (cause) {
@@ -111,9 +135,7 @@ export default function BookingsPage() {
     setActionId(id);
     setError('');
     try {
-      const updated = await vendorApi.bookings.reject<ApiBooking>(id);
-      const normalized = normalizeBooking(updated);
-      setBookings(prev => prev.map(b => b.id === id ? normalized : b));
+      await applyBookingUpdate(id, await vendorApi.bookings.reject<unknown>(id));
       setSelected(null);
       setRejectConfirm(null);
       setRejectReason('');
@@ -128,9 +150,7 @@ export default function BookingsPage() {
     setActionId(id);
     setError('');
     try {
-      const updated = await vendorApi.bookings.complete<ApiBooking>(id);
-      const normalized = normalizeBooking(updated);
-      setBookings(prev => prev.map(b => b.id === id ? normalized : b));
+      await applyBookingUpdate(id, await vendorApi.bookings.complete<unknown>(id));
       setSelected(null);
       setCompleteModal(null);
       showSuccess('Booking marked as completed');
@@ -160,7 +180,7 @@ export default function BookingsPage() {
 
   const filtered = useMemo(() => {
     return bookings.filter(b => {
-      const matchTab = tab === 'All' || b.status === tab;
+      const matchTab = matchesTab(b.status, tab);
       const q = search.toLowerCase();
       const matchSearch = !q || [b.customerName, b.serviceName, b.id, b.eventType, b.customerEmail]
         .some(f => f.toLowerCase().includes(q));
@@ -181,10 +201,10 @@ export default function BookingsPage() {
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
 
-  const tabCount = (t: BookingStatus | 'All') =>
-    t === 'All' ? bookings.length : bookings.filter(b => b.status === t).length;
+  const tabCount = (t: TabValue) =>
+    bookings.filter(b => matchesTab(b.status, t)).length;
 
-  // Sr. No. column is not sortable, so separate from sortable cols
+  
   const cols: { key: SortKey; label: string; w: string }[] = [
     { key: 'customerName', label: 'Customer',   w: 'min-w-[160px]' },
     { key: 'eventDate',    label: 'Event Date', w: 'w-[120px]' },
@@ -195,7 +215,7 @@ export default function BookingsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bookings</h1>
@@ -206,7 +226,7 @@ export default function BookingsPage() {
         </button>
       </div>
 
-      {/* Summary cards */}
+      {}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Total',     val: bookings.length,                                                    color: 'text-gray-900' },
@@ -222,7 +242,7 @@ export default function BookingsPage() {
         ))}
       </div>
 
-      {/* Tabs */}
+      {}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
         {tabs.map(({ label, value }) => (
           <button
@@ -239,9 +259,9 @@ export default function BookingsPage() {
         ))}
       </div>
 
-      {/* Table card */}
+      {}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        {/* Toolbar */}
+        {}
         <div className="flex items-center gap-3 p-4 border-b border-gray-50">
           <div className="relative flex-1 max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -266,12 +286,12 @@ export default function BookingsPage() {
           </div>
         </div>
 
-        {/* Table */}
+        {}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {/* Sr. No. — not sortable */}
+                {}
                 <th className="w-[60px] px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   Sr. No.
                 </th>
@@ -296,15 +316,21 @@ export default function BookingsPage() {
               )}
               {!loading && paginated.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400 text-sm">No bookings found</td>
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400 text-sm">No bookings found
+                    {bookings.length === 0 && !error && (
+                      <span className="block mt-1 text-xs text-gray-400">
+                        The server returned 0 bookings for vendor {getUser()?.vendorId ?? 'unknown'}.
+                      </span>
+                    )}
+                  </td>
                 </tr>
               )}
               {paginated.map((booking, idx) => {
-                // Sr. No. = global index across all pages
+                
                 const srNo = (page - 1) * pageSize + idx + 1;
                 return (
                   <tr key={booking.id} className="hover:bg-gray-50/50 transition-colors">
-                    {/* Sr. No. */}
+                    {}
                     <td className="px-4 py-3.5">
                       <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
                         {srNo}
@@ -329,14 +355,14 @@ export default function BookingsPage() {
                       <p className="text-xs text-gray-400 mt-0.5 ml-5">{booking.eventType}</p>
                     </td>
                     <td className="px-4 py-3.5">
-                      <p className="font-semibold text-gray-900">AED {booking.amount.toLocaleString()}</p>
+                      <p className="font-semibold text-gray-900">{formatMoney(booking.amount, booking.currency)}</p>
                       <div className="mt-1 h-1.5 bg-gray-100 rounded-full w-20">
                         <div
                           className="h-full bg-orange-400 rounded-full"
                           style={{ width: `${Math.min(100, (booking.paidAmount / booking.amount) * 100)}%` }}
                         />
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5">Paid: AED {booking.paidAmount.toLocaleString()}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Paid: {formatMoney(booking.paidAmount, booking.currency)}</p>
                     </td>
                     <td className="px-4 py-3.5">
                       <StatusBadge status={booking.status} />
@@ -396,7 +422,7 @@ export default function BookingsPage() {
           </table>
         </div>
 
-        {/* Pagination */}
+        {}
         <div className="flex items-center justify-between px-4 py-3 border-t border-gray-50 text-sm text-gray-500">
           <span>
             Showing {sorted.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, sorted.length)} of {sorted.length}
@@ -441,7 +467,7 @@ export default function BookingsPage() {
         </div>
       </div>
 
-      {/* ── Booking Detail Modal ── */}
+      {}
       {selected && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelected(null)}>
           <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -526,11 +552,11 @@ export default function BookingsPage() {
                 <div className="flex items-end justify-between mb-2">
                   <div>
                     <p className="text-xs text-gray-500">Total Amount</p>
-                    <p className="text-2xl font-bold text-orange-600">AED {selected.amount.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-orange-600">{formatMoney(selected.amount, selected.currency)}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-gray-500">Paid</p>
-                    <p className="text-lg font-bold text-green-600">AED {selected.paidAmount.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-green-600">{formatMoney(selected.paidAmount, selected.currency)}</p>
                   </div>
                 </div>
                 <div className="h-2 bg-white/70 rounded-full overflow-hidden mt-2">
@@ -540,7 +566,7 @@ export default function BookingsPage() {
                   />
                 </div>
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>Balance due: AED {(selected.amount - selected.paidAmount).toLocaleString()}</span>
+                  <span>Balance due: {formatMoney(selected.amount - selected.paidAmount, selected.currency)}</span>
                   <span>{Math.round((selected.paidAmount / selected.amount) * 100)}% paid</span>
                 </div>
               </div>
@@ -585,7 +611,7 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {/* ── Accept Modal ── */}
+      {}
       {acceptModal && (() => {
         const booking = bookings.find(b => b.id === acceptModal);
         if (!booking) return null;
@@ -614,7 +640,7 @@ export default function BookingsPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Amount</span>
-                  <span className="font-bold text-orange-600">AED {booking.amount.toLocaleString()}</span>
+                  <span className="font-bold text-orange-600">{formatMoney(booking.amount, booking.currency)}</span>
                 </div>
               </div>
               <div className="flex gap-3">
@@ -637,7 +663,7 @@ export default function BookingsPage() {
         );
       })()}
 
-      {/* ── Reject Confirmation Modal ── */}
+      {}
       {rejectConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6">
@@ -674,7 +700,7 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {/* ── Complete Confirmation Modal ── */}
+      {}
       {completeModal && (() => {
         const booking = bookings.find(b => b.id === completeModal);
         if (!booking) return null;

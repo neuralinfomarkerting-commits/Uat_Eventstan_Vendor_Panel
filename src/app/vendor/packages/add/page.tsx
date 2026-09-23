@@ -340,16 +340,15 @@ export default function AddPackagePage() {
               (profile as any).businessLocation ||
               (profile as any).address ||
               "";
-
             vendorPhoneNumber =
-              (profile as any).phone ||
               (profile as any).primaryMobile ||
+              (profile as any).phone ||
               (profile as any).telephone ||
               "";
 
             vendorPhoneCountryCode =
-              (profile as any).phoneCountryCode ||
               (profile as any).primaryMobileCountryCode ||
+              (profile as any).phoneCountryCode ||
               "";
           }
         } catch (error) {
@@ -372,20 +371,16 @@ export default function AddPackagePage() {
 
         const fetchedCountries = await loadCountries();
         let matchedCountryCode = "AE";
-        let displayPhone = vendorPhoneNumber;
+        const displayPhone = vendorPhoneNumber.trim();
 
         if (vendorPhoneCountryCode && fetchedCountries.length > 0) {
           const normalizedCode = vendorPhoneCountryCode.startsWith("+")
             ? vendorPhoneCountryCode
             : `+${vendorPhoneCountryCode}`;
-
           const match = fetchedCountries.find(
             (country) => country.phoneCode === normalizedCode,
           );
-
-          if (match) {
-            matchedCountryCode = match.code;
-          }
+          if (match) matchedCountryCode = match.code;
         }
 
         if (categoryList.length > 0 && categoryList[0].services.length > 0) {

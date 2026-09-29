@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Loader2,
@@ -176,6 +175,20 @@ function getRangeType(code?: string): RangeType {
 function findPriceUnit(units: PriceUnitMaster[], code?: string) {
   if (!code) return undefined;
   return units.find((unit) => unit.code === code);
+}
+
+// Comma (ya new line) se split karke har value ko alag item banata hai.
+// `fresh` = naye unique items jo pehle se added nahi hain.
+function parseList(input: string, existing: string[]) {
+  const values = input
+    .split(/[,\n]/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const uniqueInInput = Array.from(new Set(values));
+  return {
+    fresh: uniqueInInput.filter((v) => !existing.includes(v)),
+    hadValues: uniqueInInput.length > 0,
+  };
 }
 
 interface SearchableOption {
@@ -707,15 +720,15 @@ export default function EditPackagePage() {
   };
 
   const addIncludedItem = () => {
-    const trimmed = newIncludedItem.trim();
-    if (!trimmed) return;
-    if (form.includedItems.includes(trimmed)) {
+    const { fresh, hadValues } = parseList(newIncludedItem, form.includedItems);
+    if (!hadValues) return;
+    if (fresh.length === 0) {
       setFormError("This item is already added.");
       return;
     }
     setForm((current) => ({
       ...current,
-      includedItems: [...current.includedItems, trimmed],
+      includedItems: [...current.includedItems, ...fresh],
     }));
     setNewIncludedItem("");
     setFormError("");
@@ -736,15 +749,15 @@ export default function EditPackagePage() {
   };
 
   const addFeature = () => {
-    const trimmed = newFeature.trim();
-    if (!trimmed) return;
-    if (form.features.includes(trimmed)) {
+    const { fresh, hadValues } = parseList(newFeature, form.features);
+    if (!hadValues) return;
+    if (fresh.length === 0) {
       setFormError("This feature is already added.");
       return;
     }
     setForm((current) => ({
       ...current,
-      features: [...current.features, trimmed],
+      features: [...current.features, ...fresh],
     }));
     setNewFeature("");
     setFormError("");
@@ -1526,10 +1539,11 @@ export default function EditPackagePage() {
                   value={newIncludedItem}
                   onChange={(e) => setNewIncludedItem(e.target.value)}
                   onKeyDown={handleIncludedKeyDown}
-                  placeholder="e.g. 5-hour venue access"
-                  className="flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                  placeholder="e.g. 5-hour venue access, Setup, Cleanup"
+                  className="min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
                 />
                 <button
+                  type="button"
                   onClick={addIncludedItem}
                   className="flex items-center gap-1 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-orange-600"
                 >
@@ -1542,13 +1556,16 @@ export default function EditPackagePage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {form.includedItems.map((item, index) => (
                     <span
-                      key={index}
-                      className="inline-flex items-center gap-1.5 rounded-2xl bg-orange-50 px-3 py-1.5 text-sm text-orange-700 border border-orange-200"
+                      key={`${item}-${index}`}
+                      className="inline-flex max-w-full items-start gap-1.5 rounded-2xl bg-orange-50 px-3 py-1.5 text-sm text-orange-700 border border-orange-200"
                     >
-                      {item}
+                      <span className="min-w-0 whitespace-pre-line break-words">
+                        {item}
+                      </span>
                       <button
+                        type="button"
                         onClick={() => removeIncludedItem(index)}
-                        className="rounded-full p-0.5 text-orange-400 hover:bg-orange-200 hover:text-orange-600 transition-colors"
+                        className="mt-0.5 shrink-0 rounded-full p-0.5 text-orange-400 hover:bg-orange-200 hover:text-orange-600 transition-colors"
                       >
                         <X size={14} />
                       </button>
@@ -1557,8 +1574,8 @@ export default function EditPackagePage() {
                 </div>
               )}
               <p className="mt-1.5 text-xs text-gray-400">
-                Press Enter or click Add to include an item. Click the X to
-                remove.
+                Separate multiple items with a comma, then press Enter or click
+                Add. Click the X to remove.
               </p>
             </div>
 
@@ -1572,10 +1589,11 @@ export default function EditPackagePage() {
                   value={newFeature}
                   onChange={(e) => setNewFeature(e.target.value)}
                   onKeyDown={handleFeatureKeyDown}
-                  placeholder="e.g. Indoor"
-                  className="flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                  placeholder="e.g. Indoor, Luxury, Custom"
+                  className="min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
                 />
                 <button
+                  type="button"
                   onClick={addFeature}
                   className="flex items-center gap-1 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-orange-600"
                 >
@@ -1588,13 +1606,16 @@ export default function EditPackagePage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {form.features.map((item, index) => (
                     <span
-                      key={index}
-                      className="inline-flex items-center gap-1.5 rounded-2xl bg-orange-50 px-3 py-1.5 text-sm text-orange-700 border border-orange-200"
+                      key={`${item}-${index}`}
+                      className="inline-flex max-w-full items-start gap-1.5 rounded-2xl bg-orange-50 px-3 py-1.5 text-sm text-orange-700 border border-orange-200"
                     >
-                      {item}
+                      <span className="min-w-0 whitespace-pre-line break-words">
+                        {item}
+                      </span>
                       <button
+                        type="button"
                         onClick={() => removeFeature(index)}
-                        className="rounded-full p-0.5 text-orange-400 hover:bg-orange-200 hover:text-orange-600 transition-colors"
+                        className="mt-0.5 shrink-0 rounded-full p-0.5 text-orange-400 hover:bg-orange-200 hover:text-orange-600 transition-colors"
                       >
                         <X size={14} />
                       </button>
@@ -1603,8 +1624,8 @@ export default function EditPackagePage() {
                 </div>
               )}
               <p className="mt-1.5 text-xs text-gray-400">
-                Press Enter or click Add to add a feature. Click the X to
-                remove.
+                Separate multiple features with a comma, then press Enter or
+                click Add. Click the X to remove.
               </p>
             </div>
 
@@ -1678,6 +1699,7 @@ export default function EditPackagePage() {
                       className="h-40 w-40 rounded-2xl object-cover border border-gray-200"
                     />
                     <button
+                      type="button"
                       onClick={removeImage}
                       className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white shadow-lg hover:bg-red-600 transition-colors"
                     >
@@ -1836,12 +1858,14 @@ export default function EditPackagePage() {
 
           <div className="mt-6 flex gap-3 pt-4 border-t border-gray-100">
             <button
+              type="button"
               onClick={() => router.back()}
               className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving || uploadingImage}
               className="flex-1 rounded-2xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-60"

@@ -7,11 +7,13 @@ import { showError, showSuccess } from '@/lib/toast';
 import { normalizeBooking, formatMoney, isFullApiBooking, type ApiBooking } from '@/lib/vendorData';
 import {
   DollarSign, CalendarCheck, Clock,
-  Star, ArrowRight, X, CheckCircle, XCircle, MessageSquare,
-  Calendar, Users, MapPin, Phone, Mail, Briefcase
+  Star, ArrowRight, MessageSquare,
+  Calendar, Users, MapPin,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Booking } from '@/lib/types';
+import { BookingDetailsModal } from '@/components/vendor/bookings/BookingDetailsModal';
+import { AcceptModal, RejectModal } from '@/components/vendor/bookings/ActionModals';
 
 interface DashboardSummary {
   totalRevenue: number;
@@ -75,7 +77,16 @@ export default function DashboardPage() {
     if (msg) showError(msg);
   };
   
-  const recentBookings = bookings.slice(0, 5);
+  const now = new Date();
+  const isThisMonth = (dateStr: string) => {
+    const [day, month, year] = dateStr.split('/').map(Number);
+    if (!day || !month || !year) return false;
+    return month === now.getMonth() + 1 && year === now.getFullYear();
+  };
+
+  const recentBookings = bookings
+    .filter(b => b.status === 'Pending' && isThisMonth(b.createdAt))
+    .slice(0, 5);
   const displayCurrency = bookings[0]?.currency ?? 'AED';
 
   useEffect(() => {
@@ -275,8 +286,8 @@ export default function DashboardPage() {
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-gray-100">
           <div>
-            <h3 className="font-semibold text-gray-900">Recent Bookings</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Latest 5 booking requests</p>
+            <h3 className="font-semibold text-gray-900">Pending Approvals — This Month</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Bookings awaiting your response</p>
           </div>
           <Link href="/vendor/bookings" className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1 transition-colors">
             View all <ArrowRight size={14} />
@@ -286,7 +297,7 @@ export default function DashboardPage() {
         <div className="divide-y divide-gray-100">
           {recentBookings.length === 0 ? (
             <div className="p-8 text-center text-gray-400 text-sm">
-              No bookings found
+              No pending approvals this month
             </div>
           ) : (
             recentBookings.map(booking => (
@@ -392,295 +403,34 @@ export default function DashboardPage() {
 
       {}
       {showModal && selectedBooking && (
-        <div className="fixed inset-0 z-[100] overflow-y-auto">
-          {}
-          <div 
-            className="fixed inset-0 bg-black/50 transition-all duration-300"
-            onClick={closeModal}
-          />
-          
-          {}
-          <div className="flex min-h-full items-center justify-center p-4 relative z-[101]">
-            <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto transform transition-all duration-300 scale-100 max-h-[90vh] overflow-y-auto">
-              {}
-              <div className="sticky top-0 bg-white rounded-t-2xl flex items-center justify-between p-6 border-b border-gray-100 z-10">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center text-orange-700 font-bold text-lg">
-                    {selectedBooking.customerName.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold text-gray-900">{selectedBooking.customerName}</h3>
-                    <p className="text-sm text-gray-500">Booking #{selectedBooking.id}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[selectedBooking.status] || 'bg-gray-100 text-gray-600'}`}>
-                    {selectedBooking.status}
-                  </span>
-                  <button 
-                    onClick={closeModal} 
-                    className="text-gray-400 hover:text-gray-600 transition-colors rounded-full p-1 hover:bg-gray-100"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-              
-              {}
-              <div className="p-6 space-y-5">
-                {}
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Customer Information</p>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div className="flex items-center gap-2">
-                      <Mail size={14} className="text-gray-400" />
-                      <div>
-                        <p className="text-xs text-gray-400">Email</p>
-                        <p className="text-sm font-medium text-gray-800">{selectedBooking.customerEmail || 'customer@example.com'}</p>
-                      </div>
-                    </div>
-                    {selectedBooking.customerPhone && (
-                      <div className="flex items-center gap-2">
-                        <Phone size={14} className="text-gray-400" />
-                        <div>
-                          <p className="text-xs text-gray-400">Phone</p>
-                          <p className="text-sm font-medium text-gray-800">{selectedBooking.customerPhone}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {}
-                <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Event Details</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-400 mb-1">Service</p>
-                      <div className="flex items-center gap-1.5">
-                        <Briefcase size={14} className="text-orange-400" />
-                        <p className="text-sm font-semibold text-gray-900">{selectedBooking.serviceName}</p>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-400 mb-1">Event Type</p>
-                      <div className="flex items-center gap-1.5">
-                        <Calendar size={14} className="text-orange-400" />
-                        <p className="text-sm font-semibold text-gray-900">{selectedBooking.eventType}</p>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-400 mb-1">Event Date</p>
-                      <div className="flex items-center gap-1.5">
-                        <Calendar size={14} className="text-orange-400" />
-                        <p className="text-sm font-semibold text-gray-900">{selectedBooking.eventDate}</p>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-400 mb-1">Guests</p>
-                      <div className="flex items-center gap-1.5">
-                        <Users size={14} className="text-orange-400" />
-                        <p className="text-sm font-semibold text-gray-900">{selectedBooking.guests} people</p>
-                      </div>
-                    </div>
-                    {selectedBooking.eventVenue && (
-                      <div className="bg-gray-50 rounded-xl p-3 col-span-2">
-                        <p className="text-xs text-gray-400 mb-1">Venue</p>
-                        <div className="flex items-center gap-1.5">
-                          <MapPin size={14} className="text-orange-400" />
-                          <p className="text-sm font-semibold text-gray-900">{selectedBooking.eventVenue}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {}
-                <div className="bg-orange-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Payment Summary</p>
-                  <div className="flex justify-between items-end mb-2">
-                    <div>
-                      <p className="text-xs text-gray-500">Total Amount</p>
-                      <p className="text-2xl font-bold text-orange-600">{formatMoney(selectedBooking.amount, selectedBooking.currency)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500">Paid Amount</p>
-                      <p className="text-lg font-bold text-green-600">{formatMoney(selectedBooking.paidAmount, selectedBooking.currency)}</p>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-white rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-orange-400 rounded-full transition-all"
-                      style={{ width: `${(selectedBooking.paidAmount / selectedBooking.amount) * 100}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Balance: {formatMoney(selectedBooking.amount - selectedBooking.paidAmount, selectedBooking.currency)}</span>
-                    <span>{Math.round((selectedBooking.paidAmount / selectedBooking.amount) * 100)}% paid</span>
-                  </div>
-                </div>
-
-                {}
-                {selectedBooking.message && (
-                  <div className="bg-blue-50 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                      <MessageSquare size={12} /> Customer Message
-                    </p>
-                    <p className="text-sm text-blue-900 leading-relaxed">{selectedBooking.message}</p>
-                  </div>
-                )}
-
-                {}
-                {selectedBooking.status === 'Rejected (Vendor)' && selectedBooking.rejectionReason && (
-                  <div className="bg-red-50 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                      <XCircle size={12} /> Rejection Reason
-                    </p>
-                    <p className="text-sm text-red-800 leading-relaxed">{selectedBooking.rejectionReason}</p>
-                  </div>
-                )}
-              </div>
-              
-              {}
-              {selectedBooking.status === 'Pending' && (
-                <div className="flex gap-3 p-6 border-t border-gray-100">
-                  <button
-                    onClick={handleReject}
-                    className="flex-1 px-4 py-2.5 border border-red-300 text-red-700 rounded-xl hover:bg-red-50 transition-colors font-medium flex items-center justify-center gap-2"
-                  >
-                    <XCircle size={18} />
-                    Reject Booking
-                  </button>
-                  <button
-                    onClick={handleAccept}
-                    className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle size={18} />
-                    Accept Booking
-                  </button>
-                </div>
-              )}
-              
-              {selectedBooking.status !== 'Pending' && (
-                <div className="p-6 border-t border-gray-100">
-                  <button
-                    onClick={closeModal}
-                    className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <BookingDetailsModal
+          booking={selectedBooking}
+          onClose={closeModal}
+          onAccept={handleAccept}
+          onReject={handleReject}
+          onComplete={() => {}}
+        />
       )}
 
       {}
       {showConfirmDialog && selectedBooking && (
-        <div className="fixed inset-0 z-[100] overflow-y-auto">
-          <div 
-            className="fixed inset-0 bg-black/50 transition-all duration-300"
-            onClick={() => setShowConfirmDialog(false)}
-          />
-          <div className="flex min-h-full items-center justify-center p-4 relative z-[101]">
-            <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-auto transform transition-all duration-300 scale-100">
-              <div className="p-6">
-                <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle size={28} className="text-green-600" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 text-center mb-2">Confirm Booking</h3>
-                <p className="text-sm text-gray-500 text-center mb-4">
-                  You are about to accept booking for <strong>{selectedBooking.customerName}</strong>
-                </p>
-                <div className="bg-gray-50 rounded-xl p-3 mb-5 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Service:</span>
-                    <span className="font-medium text-gray-900">{selectedBooking.serviceName}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Event Date:</span>
-                    <span className="font-medium text-gray-900">{selectedBooking.eventDate}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Amount:</span>
-                    <span className="font-bold text-orange-600">{formatMoney(selectedBooking.amount, selectedBooking.currency)}</span>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowConfirmDialog(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmAccept}
-                    disabled={actionLoading}
-                    className="flex-1 py-2.5 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors"
-                  >
-                    {actionLoading ? 'Accepting...' : 'Yes, Accept'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AcceptModal
+          booking={selectedBooking}
+          submitting={actionLoading}
+          onCancel={() => setShowConfirmDialog(false)}
+          onConfirm={confirmAccept}
+        />
       )}
 
       {}
       {showRejectDialog && selectedBooking && (
-        <div className="fixed inset-0 z-[100] overflow-y-auto">
-          <div 
-            className="fixed inset-0 bg-black/50 transition-all duration-300"
-            onClick={() => {
-              setShowRejectDialog(false);
-              setRejectionReason('');
-            }}
-          />
-          <div className="flex min-h-full items-center justify-center p-4 relative z-[101]">
-            <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-auto transform transition-all duration-300 scale-100">
-              <div className="p-6">
-                <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <XCircle size={28} className="text-red-600" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 text-center mb-2">Reject Booking</h3>
-                <p className="text-sm text-gray-500 text-center mb-4">
-                  Please provide a reason for rejecting this booking from <strong>{selectedBooking.customerName}</strong>
-                </p>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Reason for rejection *</label>
-                  <textarea
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
-                    placeholder="e.g., Service unavailable on selected date, vendor not available, location not serviceable, etc."
-                    autoFocus
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowRejectDialog(false);
-                      setRejectionReason('');
-                    }}
-                    className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmReject}
-                    disabled={!rejectionReason.trim() || actionLoading}
-                    className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {actionLoading ? 'Rejecting...' : 'Confirm Reject'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <RejectModal
+          reason={rejectionReason}
+          submitting={actionLoading}
+          onReasonChange={setRejectionReason}
+          onCancel={() => { setShowRejectDialog(false); setRejectionReason(''); }}
+          onConfirm={confirmReject}
+        />
       )}
     </div>
   );

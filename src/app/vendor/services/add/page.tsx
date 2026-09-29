@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   ImagePlus,
@@ -92,7 +91,7 @@ export default function AddServicePage() {
   >([]);
   const [tagsInput, setTagsInput] = useState("");
   const [featuresInput, setFeaturesInput] = useState("");
-  const [slugEdited, setSlugEdited] = useState(false);
+  const [slugEdited] = useState(false);
   const [slugStatus, setSlugStatus] = useState<
     "idle" | "checking" | "available" | "taken"
   >("idle");
@@ -255,10 +254,19 @@ export default function AddServicePage() {
     );
   };
 
+  // Comma (or new line) se split karke har value ko alag tag banata hai
   const addTag = () => {
-    const value = tagsInput.trim();
-    if (!value || form.tags.includes(value)) return;
-    setFormField("tags", [...form.tags, value]);
+    const values = tagsInput
+      .split(/[,\n]/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    const unique = Array.from(new Set(values)).filter(
+      (v) => !form.tags.includes(v),
+    );
+
+    if (unique.length === 0) return;
+    setFormField("tags", [...form.tags, ...unique]);
     setTagsInput("");
   };
 
@@ -269,10 +277,19 @@ export default function AddServicePage() {
     );
   };
 
+  // Comma (or new line) se split karke har value ko alag feature banata hai
   const addFeature = () => {
-    const value = featuresInput.trim();
-    if (!value || form.features.includes(value)) return;
-    setFormField("features", [...form.features, value]);
+    const values = featuresInput
+      .split(/[,\n]/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    const unique = Array.from(new Set(values)).filter(
+      (v) => !form.features.includes(v),
+    );
+
+    if (unique.length === 0) return;
+    setFormField("features", [...form.features, ...unique]);
     setFeaturesInput("");
   };
 
@@ -728,10 +745,14 @@ export default function AddServicePage() {
 
         <div className="bg-white rounded-[22px] border border-gray-100 p-5 shadow-sm">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <h2 className="font-semibold text-gray-800 text-sm uppercase tracking-wide">
                 Tags
               </h2>
+              <p className="text-xs text-gray-500">
+                Separate multiple tags with a comma, e.g. Custom, Proposal,
+                Message.
+              </p>
               <div className="flex gap-2">
                 <input
                   value={tagsInput}
@@ -742,7 +763,7 @@ export default function AddServicePage() {
                       addTag();
                     }
                   }}
-                  className="flex-1 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400"
+                  className="flex-1 min-w-0 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400"
                   placeholder="Add tags like Wedding, Luxury, Indoor"
                 />
                 <button
@@ -758,13 +779,15 @@ export default function AddServicePage() {
                   {form.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-orange-50 text-orange-700 text-xs font-medium"
+                      className="inline-flex max-w-full items-start gap-1 px-3 py-1.5 rounded-2xl bg-orange-50 text-orange-700 text-xs font-medium"
                     >
-                      {tag}
+                      <span className="min-w-0 whitespace-pre-line break-words">
+                        {tag}
+                      </span>
                       <button
                         type="button"
                         onClick={() => removeTag(tag)}
-                        className="text-orange-500 hover:text-orange-700"
+                        className="mt-0.5 shrink-0 text-orange-500 hover:text-orange-700"
                       >
                         <X size={12} />
                       </button>
@@ -774,12 +797,13 @@ export default function AddServicePage() {
               )}
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <h2 className="font-semibold text-gray-800 text-sm uppercase tracking-wide">
                 What's Included
               </h2>
               <p className="text-xs text-gray-500">
-                Add multiple included items, one by one.
+                Separate multiple included items with a comma, e.g. Candles,
+                Florals &amp; Vases, Transportation &amp; Setup.
               </p>
               <div className="flex gap-2">
                 <input
@@ -791,7 +815,7 @@ export default function AddServicePage() {
                       addFeature();
                     }
                   }}
-                  className="flex-1 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400"
+                  className="flex-1 min-w-0 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400"
                   placeholder="Add included items like Custom floral arrangements"
                 />
                 <button
@@ -807,13 +831,15 @@ export default function AddServicePage() {
                   {form.features.map((feature) => (
                     <span
                       key={feature}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium"
+                      className="inline-flex max-w-full items-start gap-1 px-3 py-1.5 rounded-2xl bg-blue-50 text-blue-700 text-xs font-medium"
                     >
-                      {feature}
+                      <span className="min-w-0 whitespace-pre-line break-words">
+                        {feature}
+                      </span>
                       <button
                         type="button"
                         onClick={() => removeFeature(feature)}
-                        className="text-blue-500 hover:text-blue-700"
+                        className="mt-0.5 shrink-0 text-blue-500 hover:text-blue-700"
                       >
                         <X size={12} />
                       </button>

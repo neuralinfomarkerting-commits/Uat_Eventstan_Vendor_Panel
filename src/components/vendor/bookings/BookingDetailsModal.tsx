@@ -16,7 +16,7 @@ import {
 import { Booking } from "@/lib/types";
 import { canMarkComplete } from "@/lib/vendorData";
 import { StatusBadge, CustomerAvatar, AddressBlock } from "./Atoms";
-import { getPackageName, getCustomerMessage } from "./helpers";
+import { getPackageLines, getCustomerMessage } from "./helpers";
 
 type Props = {
   booking: Booking;
@@ -102,9 +102,11 @@ export function BookingDetailsModal({
                 <p className="text-xs text-gray-500 mb-1 flex items-center gap-1.5">
                   <Package size={12} className="text-orange-500" /> Package Name
                 </p>
-                <p className="text-sm font-semibold text-gray-900 leading-tight">
-                  {getPackageName(booking)}
-                </p>
+                <div className="space-y-1">
+                  {getPackageLines(booking).map((line, i) => (
+                    <p key={i} className="text-sm font-semibold text-gray-900 leading-tight">{line}</p>
+                  ))}
+                </div>
               </div>
               <div className="bg-gray-50 rounded-xl p-3.5 transition-shadow hover:shadow-sm">
                 <p className="text-xs text-gray-400 mb-1 flex items-center gap-1.5">

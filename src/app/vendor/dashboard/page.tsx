@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Booking } from '@/lib/types';
+import { getPackageName } from '@/components/vendor/bookings/helpers';
 import { BookingDetailsModal } from '@/components/vendor/bookings/BookingDetailsModal';
 import { AcceptModal, RejectModal } from '@/components/vendor/bookings/ActionModals';
 
@@ -40,12 +41,10 @@ type DashboardBooking = Booking & { rejectionReason?: string };
 
 const statusColor: Record<string, string> = {
   'Pending': 'bg-amber-50 text-amber-700 border border-amber-200',
-  'Accepted': 'bg-blue-50 text-blue-700 border border-blue-200',
   'Confirmed': 'bg-green-50 text-green-700 border border-green-200',
   'Completed': 'bg-indigo-50 text-indigo-700 border border-indigo-200',
-  'Rejected (Vendor)': 'bg-red-50 text-red-700 border border-red-200',
+  'Cancelled': 'bg-red-50 text-red-700 border border-red-200',
   'Payment Pending (Balance)': 'bg-orange-50 text-orange-700 border border-orange-200',
-  'Cancelled (Admin/User)': 'bg-gray-100 text-gray-600 border border-gray-200',
 };
 
 function getGreeting() {
@@ -323,7 +322,7 @@ export default function DashboardPage() {
                           {booking.status}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600 mb-1">{booking.serviceName}</p>
+                      <p className="text-sm text-gray-600 mb-1 whitespace-pre-line">{getPackageName(booking)}</p>
                       <div className="flex items-center gap-4 text-xs text-gray-500">
                         <span className="flex items-center gap-1">
                           <Calendar size={12} />

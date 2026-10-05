@@ -1,6 +1,10 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { vendorApi } from '@/api/vendorApi';
 import { ChevronUp, ChevronDown, ChevronsUpDown, MapPin } from 'lucide-react';
 import { Booking } from '@/lib/types';
-import { statusConfig, getAvatarColor, getProfileImage, getAddressLines, SortKey, SortDir } from './helpers';
+import { statusConfig, getAvatarColor, getProfileImage, getAddressLines, ResolvedLocation, SortKey, SortDir } from './helpers';
 
 export function StatusBadge({ status }: { status: string }) {
   const cfg = statusConfig[status] ?? { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' };
@@ -48,8 +52,39 @@ export function CustomerAvatar({ booking, size = 'md' }: { booking: Booking; siz
   );
 }
 
+type MasterRow = { id: number | string; name: string; countryId?: number };
+
+// Resolves stateId / cityId (and the country derived from the state) to names.
+function useResolvedLocation(booking: Booking): ResolvedLocation {
+  const [resolved, setResolved] = useState<ResolvedLocation>({});
+  const stateId = booking.address?.stateId;
+  const cityId = booking.address?.cityId;
+
+  useEffect(() => {
+    if (!stateId && !cityId) return;
+    let cancelled = false;
+    (async () => {
+      const [states, cities, countries] = await Promise.all([
+        vendorApi.masterData.states<MasterRow[]>().catch(() => [] as MasterRow[]),
+        vendorApi.masterData.cities<MasterRow[]>().catch(() => [] as MasterRow[]),
+        vendorApi.masterData.countries<MasterRow[]>().catch(() => [] as MasterRow[]),
+      ]);
+      if (cancelled) return;
+      const state = (states ?? []).find(s => String(s.id) === String(stateId));
+      const city = (cities ?? []).find(c => String(c.id) === String(cityId));
+      const countryId = state?.countryId ?? city?.countryId;
+      const country = (countries ?? []).find(c => String(c.id) === String(countryId));
+      setResolved({ state: state?.name, city: city?.name, country: country?.name });
+    })();
+    return () => { cancelled = true; };
+  }, [stateId, cityId]);
+
+  return resolved;
+}
+
 export function AddressBlock({ booking }: { booking: Booking }) {
-  const lines = getAddressLines(booking);
+  const resolved = useResolvedLocation(booking);
+  const lines = getAddressLines(booking, resolved);
   return (
     <div className="space-y-2">
       {lines.map((line, i) =>

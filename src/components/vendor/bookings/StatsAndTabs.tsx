@@ -7,7 +7,7 @@ export function StatsCards({ bookings }: { bookings: Booking[] }) {
     { label: 'Pending',   val: bookings.filter(b => b.status === 'Pending').length,           color: 'text-amber-600',  ring: 'hover:border-amber-300',  accent: 'bg-amber-400' },
     { label: 'Confirmed', val: bookings.filter(b => b.status === 'Confirmed').length,         color: 'text-green-600',  ring: 'hover:border-green-300',  accent: 'bg-green-400' },
     { label: 'Completed', val: bookings.filter(b => b.status === 'Completed').length,         color: 'text-indigo-600', ring: 'hover:border-indigo-300', accent: 'bg-indigo-400' },
-    { label: 'Rejected',  val: bookings.filter(b => b.status.startsWith('Rejected')).length,  color: 'text-red-500',    ring: 'hover:border-red-300',    accent: 'bg-red-400' },
+    { label: 'Cancelled', val: bookings.filter(b => b.status === 'Cancelled').length,  color: 'text-red-500',    ring: 'hover:border-red-300',    accent: 'bg-red-400' },
   ];
 
   return (

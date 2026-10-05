@@ -1,9 +1,6 @@
 export type BookingStatus =
   | 'Pending'
-  | 'Accepted'
-  | 'Rejected (Vendor)'
-  | 'Rejected (Admin – No Response)'
-  | 'Cancelled (Admin/User)'
+  | 'Cancelled'
   | 'Payment Pending (Balance)'
   | 'Confirmed'
   | 'Completed';
@@ -27,6 +24,23 @@ export interface Booking {
   // Raw backend status kept so actions (accept/reject/complete) can be
   // gated on the real lifecycle value instead of the simplified label.
   rawStatus?: string;
+  items?: { title?: string; quantity?: number }[];
+  eventCity?: string;
+  eventState?: string;
+  eventCountry?: string;
+  eventZip?: string;
+  // Structured address from the API (state/city come as IDs and are resolved
+  // to names through master-data in the details modal).
+  address?: BookingAddress;
+}
+
+export interface BookingAddress {
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  landmark?: string | null;
+  poBoxNumber?: string | null;
+  stateId?: string | null;
+  cityId?: string | null;
 }
 
 export type PriceUnit = 'per event' | 'per person' | 'per hour' | 'per day';

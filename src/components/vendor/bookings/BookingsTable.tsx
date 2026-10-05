@@ -146,7 +146,7 @@ export function BookingsTable({
                         <p className="font-medium text-gray-900 leading-tight">
                           {booking.customerName}
                         </p>
-                        <p className="text-xs text-gray-400 mt-0.5">{packageName}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 whitespace-pre-line">{packageName}</p>
                       </div>
                     </div>
                   </td>

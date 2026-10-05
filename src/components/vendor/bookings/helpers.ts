@@ -1,18 +1,16 @@
 import { Booking } from '@/lib/types';
 
 export const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
-  'Accepted':          { bg: 'bg-cyan-50',    text: 'text-cyan-700',    dot: 'bg-cyan-400' },
   'Confirmed':         { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400' },
   'Completed':         { bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-400' },
-  'Rejected (Vendor)': { bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400' },
+  'Cancelled':         { bg: 'bg-rose-50',    text: 'text-rose-700',    dot: 'bg-rose-400' },
 };
 
 export const rowAccent: Record<string, string> = {
   'Pending':           'border-l-amber-400',
-  'Accepted':          'border-l-cyan-400',
   'Confirmed':         'border-l-green-400',
   'Completed':         'border-l-indigo-400',
-  'Rejected (Vendor)': 'border-l-red-400',
+  'Cancelled':         'border-l-red-400',
 };
 
 export const avatarPalette = [
@@ -29,32 +27,29 @@ export function getAvatarColor(name: string) {
   return avatarPalette[hash % avatarPalette.length];
 }
 
-export type TabValue = 'Pending' | 'Accepted' | 'Confirmed' | 'Completed' | 'Rejected (Vendor)'
-  | 'All' | 'In Process' | 'Rejected';
+export type TabValue = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled'
+  | 'All' | 'In Process';
 
 export const tabStyles: Record<TabValue, { active: string; badge: string }> = {
   'All':          { active: 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/30', badge: 'bg-white/25 text-white' },
   'In Process':   { active: 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/30', badge: 'bg-white/25 text-white' },
-  'Accepted':     { active: 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30', badge: 'bg-white/25 text-white' },
-  'Rejected':     { active: 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30', badge: 'bg-white/25 text-white' },
+  'Confirmed':    { active: 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30', badge: 'bg-white/25 text-white' },
+  'Cancelled':    { active: 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg shadow-red-500/30', badge: 'bg-white/25 text-white' },
   'Completed':    { active: 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/30', badge: 'bg-white/25 text-white' },
   'Pending':      { active: '', badge: '' },
-  'Confirmed':    { active: '', badge: '' },
-  'Rejected (Vendor)': { active: '', badge: '' },
 };
 
 export const tabs: { label: string; value: TabValue }[] = [
   { label: 'All Bookings', value: 'All' },
   { label: 'In Process',   value: 'In Process' },
-  { label: 'Accepted',     value: 'Accepted' },
-  { label: 'Rejected',     value: 'Rejected' },
+  { label: 'Confirmed',    value: 'Confirmed' },
+  { label: 'Cancelled',    value: 'Cancelled' },
   { label: 'Completed',    value: 'Completed' },
 ];
 
 export function matchesTab(status: string, tab: TabValue) {
   if (tab === 'All') return true;
   if (tab === 'In Process') return status === 'Pending';
-  if (tab === 'Rejected') return status.startsWith('Rejected');
   return status === tab;
 }
 
@@ -70,13 +65,16 @@ export function getPackageItems(booking: Booking): BookingItem[] {
   return Array.isArray(items) ? items : [];
 }
 
+// One entry per package. With several packages they are labelled P1, P2, ...
+export function getPackageLines(booking: Booking): string[] {
+  const titles = getPackageItems(booking).map(i => i.title).filter(Boolean) as string[];
+  if (titles.length > 1) return titles.map((t, i) => `P${i + 1}: ${t}`);
+  if (titles.length === 1) return titles;
+  return [booking.serviceName || 'N/A'];
+}
+
 export function getPackageName(booking: Booking): string {
-  const items = getPackageItems(booking);
-  if (items.length > 0) {
-    const titles = items.map(i => i.title).filter(Boolean) as string[];
-    if (titles.length > 0) return titles.join(', ');
-  }
-  return booking.serviceName || 'N/A';
+  return getPackageLines(booking).join('\n');
 }
 
 export function getEventType(booking: Booking): string {
@@ -111,15 +109,17 @@ type AddressParts = {
   state: string;
   poBox: string;
   landmark: string;
+  country: string;
+  zip: string;
 };
 
 function parseAddress(booking: Booking): AddressParts | null {
   const notes = booking.message ?? (booking as unknown as { notes?: string }).notes ?? '';
   if (!notes.trim()) return null;
-  if (!/address line 1:/i.test(notes)) return null;
+  if (!/(address line 1|city|state|country|zip|po box|landmark):/i.test(notes)) return null;
 
   const parts = notes.split(' - ').map(p => p.trim()).filter(Boolean);
-  const result: AddressParts = { line1: '', line2: '', city: '', state: '', poBox: '', landmark: '' };
+  const result: AddressParts = { line1: '', line2: '', city: '', state: '', poBox: '', landmark: '', country: '', zip: '' };
 
   for (const part of parts) {
     const lower = part.toLowerCase();
@@ -135,10 +135,14 @@ function parseAddress(booking: Booking): AddressParts | null {
       result.poBox = part.replace(/^po box:\s*/i, '').trim();
     } else if (lower.startsWith('landmark:')) {
       result.landmark = part.replace(/^landmark:\s*/i, '').trim();
+    } else if (lower.startsWith('country:')) {
+      result.country = part.replace(/^country:\s*/i, '').trim();
+    } else if (lower.startsWith('zip:')) {
+      result.zip = part.replace(/^zip:\s*/i, '').trim();
     }
   }
 
-  if (!result.line1 && !result.line2 && !result.city && !result.state && !result.poBox && !result.landmark) {
+  if (!result.line1 && !result.line2 && !result.city && !result.state && !result.poBox && !result.landmark && !result.country && !result.zip) {
     return null;
   }
   return result;
@@ -146,30 +150,38 @@ function parseAddress(booking: Booking): AddressParts | null {
 
 export type AddressLine = { label: string; value: string };
 
-export function getAddressLines(booking: Booking): AddressLine[] {
+export type ResolvedLocation = { city?: string; state?: string; country?: string };
+
+export function getAddressLines(booking: Booking, resolved?: ResolvedLocation): AddressLine[] {
   const parsed = parseAddress(booking);
-  if (parsed) {
-    const lines: AddressLine[] = [];
-    if (parsed.line1) lines.push({ label: 'Address Line 1', value: parsed.line1 });
-    if (parsed.line2) lines.push({ label: 'Address Line 2', value: parsed.line2 });
-    if (parsed.city) lines.push({ label: 'City', value: parsed.city });
-    if (parsed.state) lines.push({ label: 'State', value: parsed.state });
-    if (parsed.poBox) lines.push({ label: 'PO Box', value: parsed.poBox });
-    if (parsed.landmark) lines.push({ label: 'Landmark', value: parsed.landmark });
-    if (lines.length > 0) return lines;
-  }
-  if (booking.eventVenue) return [{ label: 'Venue', value: booking.eventVenue }];
-  return [{ label: '', value: 'N/A' }];
+  const lines: AddressLine[] = [];
+  const add = (label: string, value?: string) => {
+    if (value && value.trim() && !lines.some(l => l.label === label)) lines.push({ label, value: value.trim() });
+  };
+  const addr = booking.address;
+  const hasLines = Boolean(parsed?.line1 || parsed?.line2 || addr?.addressLine1 || addr?.addressLine2);
+  add('Address Line 1', addr?.addressLine1 || parsed?.line1);
+  add('Address Line 2', addr?.addressLine2 || parsed?.line2);
+  // No structured lines in the notes: fall back to the full venue string.
+  if (!hasLines) add('Address', booking.eventVenue);
+  add('City', resolved?.city || parsed?.city || booking.eventCity);
+  add('State', resolved?.state || parsed?.state || booking.eventState);
+  add('Country', resolved?.country || parsed?.country || booking.eventCountry);
+  add('Zip', parsed?.zip || booking.eventZip);
+  add('PO Box', addr?.poBoxNumber || parsed?.poBox);
+  add('Landmark', addr?.landmark || parsed?.landmark);
+  return lines.length > 0 ? lines : [{ label: '', value: 'N/A' }];
 }
 
 export function getCustomerMessage(booking: Booking): string {
   const notes = booking.message ?? (booking as unknown as { notes?: string }).notes ?? '';
   if (!notes.trim()) return 'N/A';
 
-  if (/address line 1:/i.test(notes)) {
+  if (/(address line 1|city|state|country|zip|po box|landmark|phone):/i.test(notes)) {
     const parts = notes.split(' - ').map(p => p.trim()).filter(Boolean);
     const addressKeywords = [
       /^address line/i,
+      /^phone:/i,
       /^city:/i,
       /^state:/i,
       /^po box:/i,

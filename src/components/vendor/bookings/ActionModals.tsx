@@ -127,7 +127,7 @@ function Row({ icon, label, value, mono }: { icon: React.ReactNode; label: strin
   return (
     <div className="flex items-center justify-between text-sm gap-3">
       <span className="text-gray-500 flex items-center gap-1.5 shrink-0">{icon} {label}</span>
-      <span className={`font-semibold text-gray-900 text-right ${mono ? 'font-mono text-xs break-all' : ''}`}>{value}</span>
+      <span className={`font-semibold text-gray-900 text-right whitespace-pre-line ${mono ? 'font-mono text-xs break-all' : ''}`}>{value}</span>
     </div>
   );
 }
